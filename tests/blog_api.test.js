@@ -1,14 +1,23 @@
 const mongoose = require('mongoose')
 const helper = require('./blog_api_test_helper')
+const userHelper = require('./user_api_test_helper')
 const supertest = require('supertest')
 const app = require('../app')
 const api = supertest(app)
 const Blog = require('../models/blog')
+const User = require('../models/user')
 
 beforeEach(async () => {
+    await userHelper.initUsersToDb()
+    const users = await User.find({})
+
     await Blog.deleteMany({})
-  
-    const blogObjects = helper.initBlogs.map(blog => new Blog(blog))
+    const blogObjects = helper.initBlogs.map((blog, idx) => {
+        return new Blog({
+            ...blog,
+            user: users[(idx % (users.length))]._id
+        }) 
+    })
     const promiseArray = blogObjects.map(blog => blog.save())
     await Promise.all(promiseArray)
 })
@@ -31,6 +40,15 @@ describe('when there is initially some notes saved', () => {
 
 describe('addition of a new blog', () => {
     test('a blog can be added', async () => {
+
+        const user = userHelper.initUsers[0]
+        const result = await api.post('/api/login')
+            .send({
+                username: user.username,
+                password: user.password
+            })
+        const token = JSON.parse(result.text).token
+        
         const newBlog = {
             title: "Test Save Blog Post",
             author: "Yam Ng",
@@ -40,6 +58,7 @@ describe('addition of a new blog', () => {
         await api
             .post('/api/blogs')
             .send(newBlog)
+            .auth(token, { type: 'bearer' })
             .expect(201)
             .expect('Content-Type', /application\/json/)
         
@@ -70,6 +89,15 @@ describe('addition of a new blog', () => {
     })
     
     test('blogs creation return fail response when missing required fields', async () => {
+
+        const user = userHelper.initUsers[0]
+        const result = await api.post('/api/login')
+            .send({
+                username: user.username,
+                password: user.password
+            })
+        const token = JSON.parse(result.text).token
+
         const newBlogWithoutTitle = {
             author: "Yam Ng",
             url: "http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html"
@@ -77,6 +105,7 @@ describe('addition of a new blog', () => {
         await api
             .post('/api/blogs')
             .send(newBlogWithoutTitle)
+            .auth(token, { type: 'bearer' })
             .expect(400)
     
         const newBlogWithoutUrl = {
@@ -86,6 +115,7 @@ describe('addition of a new blog', () => {
         await api
             .post('/api/blogs')
             .send(newBlogWithoutUrl)
+            .auth(token, { type: 'bearer' })
             .expect(400)
     
         const newBlogWithoutAll = {
@@ -94,6 +124,7 @@ describe('addition of a new blog', () => {
         await api
             .post('/api/blogs')
             .send(newBlogWithoutAll)
+            .auth(token, { type: 'bearer' })
             .expect(400)
     })
 })
@@ -103,9 +134,18 @@ describe('deletion of a note', () => {
     test('blog can be deleted', async () => {
         const blogAtStart = await helper.blogsInDb()
         const blogToDelete = blogAtStart[0]
+
+        const user = userHelper.initUsers[0]
+        const result = await api.post('/api/login')
+            .send({
+                username: user.username,
+                password: user.password
+            })
+        const token = JSON.parse(result.text).token
       
         await api
           .delete(`/api/blogs/${blogToDelete.id}`)
+          .auth(token, { type: 'bearer' })
           .expect(204)
       
         const blogsAtEnd = await helper.blogsInDb()
